@@ -1,0 +1,22 @@
+{
+  "filePath": ".spec-workflow/specs/cfst-xgboost-pipeline/design.md",
+  "currentVersion": 2,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-01-13T16:10:26.294Z",
+      "trigger": "initial",
+      "approvalId": "approval_1768320626284_86ddnl0pj",
+      "approvalTitle": "CFST XGBoost Pipeline Design Approval"
+    },
+    {
+      "version": 2,
+      "filename": "snapshot-002.json",
+      "timestamp": "2026-01-13T16:10:59.580Z",
+      "trigger": "approved",
+      "approvalId": "approval_1768320626284_86ddnl0pj",
+      "approvalTitle": "CFST XGBoost Pipeline Design Approval"
+    }
+  ]
+}
