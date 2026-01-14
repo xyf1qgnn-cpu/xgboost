@@ -15,6 +15,9 @@
       "random_state": 42
     },
     "model": {
+      "use_optuna": true,
+      "n_trials": 200,
+      "optuna_timeout": 7200,
       "params": {
         "objective": "reg:squarederror",
         "max_depth": 4,
@@ -30,10 +33,7 @@
         "tree_method": "hist",
         "device": "cpu",
         "n_jobs": -1
-      },
-      "use_optuna": false,
-      "n_trials": 200,
-      "optuna_timeout": 7200
+      }
     },
     "cv": {
       "n_splits": 5,
@@ -41,21 +41,21 @@
       "shuffle": true
     },
     "paths": {
-      "output_dir": "output",
+      "output_dir": "output_stage2",
       "model_dir": "models",
-      "model_output": "xgboost_model.pkl",
-      "preprocessor_output": "preprocessor.pkl",
-      "feature_names_output": "feature_names.json",
-      "metadata_output": "training_metadata.json",
-      "feature_importance_plot": "feature_importance.png",
-      "predictions_plot": "predictions_vs_actual.png",
-      "evaluation_report": "evaluation_report.json",
+      "model_output": "xgboost_model_optuna.pkl",
+      "preprocessor_output": "preprocessor_optuna.pkl",
+      "feature_names_output": "feature_names_optuna.json",
+      "metadata_output": "training_metadata_optuna.json",
+      "feature_importance_plot": "feature_importance_optuna.png",
+      "predictions_plot": "predictions_vs_actual_optuna.png",
+      "evaluation_report": "evaluation_report_optuna.json",
       "logs_dir": "logs"
     },
     "logging": {
       "level": "INFO",
       "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-      "file_name": "cfst_xgboost.log"
+      "file_name": "cfst_xgboost_stage2.log"
     }
   },
   "evaluation_metrics": {
@@ -82,7 +82,7 @@
     "std_cv_score": 191.99258892542872,
     "max_cv_score": -827.9036437978489,
     "min_cv_score": -1390.5158805162152,
-    "cv_time": 2.5523581504821777,
+    "cv_time": 2.663893699645996,
     "n_folds": 5
   },
   "feature_names": [
