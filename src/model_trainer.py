@@ -229,53 +229,46 @@ class ModelTrainer:
 
         # Define objective function for Optuna
         def objective(trial):
-            # Define hyperparameter search space - OPTIMIZED for COV < 0.05
-            # Stage 2: Refined search space based on Stage 1 baseline (COV ≈ 0.15-0.18)
-            # Strategy: Balance model capacity and regularization to reduce COV
+            # Stage 1: Mild regularization to reduce overfitting
+            # Target: Reduce test COV from 0.134 to < 0.10
+            # Strategy: Slightly reduce model capacity, moderate regularization
             params = {
                 'objective': 'reg:squarederror',
 
-                # max_depth: EXTENDED range for better pattern learning
-                # Current COV suggests model may be underfitting with conservative depth
-                # Range: 4-9 (Stage 1: 3-7)
-                'max_depth': trial.suggest_int('max_depth', 4, 9),
+                # max_depth: MILDLY REDUCED to address overfitting (RMSE ratio = 1.89)
+                # Original: 4-9  →  Stage 1: 3-6
+                'max_depth': trial.suggest_int('max_depth', 3, 6),
 
-                # learning_rate: LOWERED for more precise convergence
-                # Lower LR + more iterations = better optimization
-                # Range: 0.01-0.15 (Stage 1: 0.05-0.2)
-                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.15, log=True),
+                # learning_rate: LOWERED for more stable convergence
+                # Original: 0.01-0.15  →  Stage 1: 0.03-0.12
+                'learning_rate': trial.suggest_float('learning_rate', 0.03, 0.12, log=True),
 
                 # n_estimators: INCREASED to compensate for lower learning rate
-                # More iterations needed for convergence with lower LR
-                # Range: 300-1000 (Stage 1: 250-600)
-                'n_estimators': trial.suggest_int('n_estimators', 300, 1000),
+                # Original: 300-1000  →  Stage 1: 400-1200
+                'n_estimators': trial.suggest_int('n_estimators', 400, 1200),
 
-                # subsample: ADJUSTED for better variance-bias tradeoff
-                # Allow more diversity to reduce variance
-                # Range: 0.7-0.95 (Stage 1: 0.85-0.98)
-                'subsample': trial.suggest_float('subsample', 0.7, 0.95),
+                # subsample: MODERATELY REDUCED to increase randomness
+                # Original: 0.7-0.95  →  Stage 1: 0.6-0.9
+                'subsample': trial.suggest_float('subsample', 0.6, 0.9),
 
-                # colsample_bytree: ADJUSTED for feature diversity
-                # Range: 0.7-0.95 (Stage 1: 0.85-0.98)
-                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.7, 0.95),
+                # colsample_bytree: MODERATELY REDUCED for feature sampling
+                # Original: 0.7-0.95  →  Stage 1: 0.6-0.9
+                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.6, 0.9),
 
-                # min_child_weight: REDUCED for finer-grained learning
-                # Stage 1 range (5-20) may have been too restrictive
-                # Range: 2-15 (Stage 1: 5-20)
-                'min_child_weight': trial.suggest_int('min_child_weight', 2, 15),
+                # min_child_weight: MILDLY INCREASED to prevent noise fitting
+                # Original: 2-15  →  Stage 1: 5-20
+                'min_child_weight': trial.suggest_int('min_child_weight', 5, 20),
 
-                # reg_alpha: MODERATELY REDUCED L1 regularization
-                # Allow more feature selection flexibility
-                # Range: 0.05-1.5 (Stage 1: 0.1-2.0)
-                'reg_alpha': trial.suggest_float('reg_alpha', 0.05, 1.5, log=True),
+                # reg_alpha: MODERATELY INCREASED L1 regularization
+                # Original: 0.05-1.5  →  Stage 1: 0.1-2.0
+                'reg_alpha': trial.suggest_float('reg_alpha', 0.1, 2.0, log=True),
 
-                # reg_lambda: REDUCED L2 regularization to prevent underfitting
-                # Stage 1 range (1.0-10.0) may have been too strong
-                # Range: 0.5-5.0 (Stage 1: 1.0-10.0)
+                # reg_lambda: MAINTAINED L2 regularization
+                # Original: 0.5-5.0  →  Stage 1: 0.5-5.0
                 'reg_lambda': trial.suggest_float('reg_lambda', 0.5, 5.0, log=True),
 
-                # gamma: SLIGHTLY EXPANDED minimum loss reduction
-                # Range: 0.01-0.3 (Stage 1: 0.05-0.3)
+                # gamma: MAINTAINED minimum loss reduction
+                # Original: 0.01-0.3  →  Stage 1: 0.01-0.3
                 'gamma': trial.suggest_float('gamma', 0.01, 0.3),
 
                 # Fixed parameters

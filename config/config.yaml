@@ -31,38 +31,47 @@ data:
 
 # XGBoost model parameters
 model:
-  # XGBoost hyperparameters - Stage 1 Configuration
-  # Designed to prevent overfitting and improve COV for outlier-heavy data
+  # XGBoost hyperparameters - Stage 1 Baseline
+  # Mild regularization to reduce overfitting (RMSE ratio = 1.89)
+  # Target: Reduce test COV from 0.134 to < 0.10
   params:
     # Learning objective
     objective: "reg:squarederror"
 
-    # Maximum depth of trees - REDUCED to prevent overfitting to outliers
-    # Target COV < 0.05 requires strong regularization
+    # Maximum depth of trees - MILDLY REDUCED from 4
+    # Stage 1 search space: 3-6
     max_depth: 4
 
-    # Learning rate (eta) - Lowered for more stable convergence
-    learning_rate: 0.08
+    # Learning rate - LOWERED for more stable convergence
+    # Stage 1 search space: 0.03-0.12
+    learning_rate: 0.06
 
-    # Number of boosting rounds - Increased to compensate for lower depth
-    n_estimators: 400
+    # Number of boosting rounds - INCREASED to compensate for lower learning rate
+    # Stage 1 search space: 400-1200
+    n_estimators: 600
 
-    # Subsample ratio of training instances - Increased for stability
-    subsample: 0.9
+    # Subsample ratio - MODERATELY REDUCED to increase randomness
+    # Stage 1 search space: 0.6-0.9
+    subsample: 0.75
 
-    # Subsample ratio of columns for each tree - Increased for stability
-    colsample_bytree: 0.9
+    # Subsample ratio of columns - MODERATELY REDUCED for feature sampling
+    # Stage 1 search space: 0.6-0.9
+    colsample_bytree: 0.75
 
-    # Minimum child weight - INCREASED to handle outliers (380 outliers = 9.3%)
-    min_child_weight: 8
+    # Minimum child weight - MILDLY INCREASED to prevent noise fitting
+    # Stage 1 search space: 5-20
+    min_child_weight: 10
 
-    # L1 regularization - ADDED for feature selection and sparsity
-    reg_alpha: 0.5
+    # L1 regularization - MODERATELY INCREASED
+    # Stage 1 search space: 0.1-2.0
+    reg_alpha: 0.8
 
-    # L2 regularization - ADDED to prevent overfitting to outliers
+    # L2 regularization - MAINTAINED
+    # Stage 1 search space: 0.5-5.0
     reg_lambda: 2.0
 
-    # Minimum loss reduction to make a split
+    # Minimum loss reduction - MAINTAINED
+    # Stage 1 search space: 0.01-0.3
     gamma: 0.1
 
     # Random seed
@@ -77,16 +86,15 @@ model:
     # Number of parallel threads
     n_jobs: -1
 
-  # Optuna hyperparameter optimization - ENABLED for Stage 2
-  # Stage 1: Evaluate baseline COV with conservative parameters
-  # Stage 2: Enable Optuna to target COV < 0.05
-  use_optuna: false
+  # Optuna hyperparameter optimization - ENABLED for Stage 1
+  # See plan/optimization_roadmap.md for details
+  use_optuna: true
 
-  # Number of Optuna trials (if enabled)
+  # Number of Optuna trials
   n_trials: 300
 
   # Optuna timeout (seconds)
-  optuna_timeout: 7200  # 2 hours for thorough search
+  optuna_timeout: 7200  # 2 hours
 
 # Cross-validation configuration
 cv:
