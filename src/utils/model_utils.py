@@ -344,3 +344,69 @@ def list_model_files(model_dir: str) -> dict:
             }
 
     return files_info
+
+
+def save_best_params(
+    best_params: dict,
+    best_score: float,
+    trial_number: int,
+    n_trials: int,
+    output_path: str = 'logs/best_params.json'
+) -> None:
+    """
+    Save best Optuna parameters to JSON file.
+
+    Args:
+        best_params: Dictionary of best hyperparameters
+        best_score: Best RMSE score achieved
+        trial_number: Trial number that achieved the best score
+        n_trials: Total number of trials run
+        output_path: Output file path (default: logs/best_params.json)
+    """
+    from datetime import datetime
+
+    data = {
+        'trial_number': trial_number,
+        'best_rmse': best_score,
+        'parameters': best_params,
+        'timestamp': datetime.now().isoformat(),
+        'n_trials_total': n_trials
+    }
+
+    # Create directory if it doesn't exist
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, 'w') as f:
+        json.dump(data, f, indent=2)
+
+    logger.info(f"Best parameters saved to {output_path}")
+    logger.info(f"  Best RMSE: {best_score:.4f} (Trial {trial_number})")
+
+
+def load_best_params(input_path: str = 'logs/best_params.json') -> Optional[dict]:
+    """
+    Load best Optuna parameters from JSON file.
+
+    Args:
+        input_path: Path to best parameters file (default: logs/best_params.json)
+
+    Returns:
+        Dictionary of best parameters, or None if file doesn't exist
+
+    Note:
+        Returns None if file doesn't exist (first run without Optuna).
+    """
+    path = Path(input_path)
+    if not path.exists():
+        logger.warning(f"No saved parameters found at {input_path}")
+        return None
+
+    with open(path, 'r') as f:
+        data = json.load(f)
+
+    logger.info(f"Loaded best parameters from {input_path}")
+    logger.info(f"  Best RMSE: {data['best_rmse']:.4f} (Trial {data['trial_number']})")
+    logger.info(f"  Saved on: {data['timestamp']}")
+    logger.info(f"  Total trials: {data['n_trials_total']}")
+
+    return data['parameters']

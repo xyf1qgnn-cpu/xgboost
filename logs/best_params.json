@@ -1,0 +1,17 @@
+{
+  "trial_number": 79,
+  "best_rmse": 554.9208295740007,
+  "parameters": {
+    "max_depth": 7,
+    "learning_rate": 0.10456477089212307,
+    "n_estimators": 547,
+    "subsample": 0.9059708763991396,
+    "colsample_bytree": 0.8685274806023014,
+    "min_child_weight": 20,
+    "reg_alpha": 1.1408620775128826,
+    "reg_lambda": 3.5871489124615974,
+    "gamma": 0.09873345991294272
+  },
+  "timestamp": "2026-01-14T12:32:00",
+  "n_trials_total": 100
+}

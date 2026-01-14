@@ -8,7 +8,8 @@
 
 - **模块化设计**：清晰的模块分离，便于维护和扩展
 - **特征工程支持**：处理无量纲参数，剔除几何参数实现多截面统一预测
-- **自动化超参数优化**：集成Optuna框架进行超参数搜索
+- **自动化超参数优化**：集成Optuna框架进行超参数搜索，支持持久化存储和断点续训
+- **智能参数加载**：自动加载最优参数，无需手动配置
 - **特征选择**：迭代剔除法自动寻找最优特征子集
 - **多维度评估**：集成R²、RMSE、MAE、MAPE、COV等工程指标
 - **可视化分析**：提供预测散点图、特征重要性图和学习曲线
@@ -40,12 +41,14 @@
 ```
 xgboost/
 ├── config/                           # 配置文件目录
-│   ├── config.yaml                   # 主配置（剔除几何参数）
-│   └── config_all_features.yaml      # 全量特征配置
+│   └── config.yaml                   # 主配置（通过use_optuna切换训练阶段）
 ├── data/                             # 数据目录
 │   ├── raw/                          # 原始数据
 │   ├── processed/                    # 处理后数据
 │   └── models/                       # 训练好的模型
+├── logs/                             # 日志和优化数据目录
+│   ├── optuna_study.db               # Optuna持久化存储（自动生成）
+│   └── best_params.json              # 最优参数记录（自动生成）
 ├── output/                           # 输出结果目录
 │   ├── xgboost_model/                # 模型输出
 │   ├── feature_selection/            # 特征选择结果（18参数）
@@ -236,25 +239,21 @@ logging:
   console_output: true                         # 控制台输出
 ```
 
-### 全量特征配置（config_all_features.yaml）
-
-此配置文件**不包含列剔除**，使用全部24个参数，用于对比分析。
-
-```yaml
-data:
-  train_path: "feature_parameters.csv"
-  target_column: "Nexp (kN)"
-  test_size: 0.2
-  random_state: 42
-  columns_to_drop: []  # 不剔除任何列
-
-# 其余配置与config.yaml相同
-...
-```
-
 ---
 
 ## 训练使用手册
+
+### 训练阶段说明
+
+本项目使用单一配置文件 `config/config.yaml`，通过 `use_optuna` 参数切换训练阶段：
+
+**Stage 1: 基础训练**（默认）
+- `use_optuna: false` - 使用预设参数进行训练
+- 用于评估基准性能
+
+**Stage 2: Optuna深度调优**
+- `use_optuna: true` - 启用超参数自动搜索
+- 目标：优化COV指标至 < 0.05
 
 ### 步骤1：环境准备
 
@@ -348,17 +347,17 @@ python train.py --config config/config.yaml
 #### 快速训练（禁用Optuna）
 
 ```bash
-python train.py --config config/config.yaml --use-optuna false
+python train.py --config config/config.yaml
 ```
 
-#### 全量特征训练
-
+**切换到 Stage 2（启用Optuna）**：
 ```bash
-# 使用包含几何参数的数据
-python train.py --config config/config_all_features.yaml
+# 编辑 config.yaml，设置 use_optuna: true
+# 然后执行：
+python train.py --config config/config.yaml
 ```
 
-### 步骤5：查看训练结果
+### 步骤4：查看训练结果
 
 训练完成后，查看输出目录：
 
@@ -379,7 +378,7 @@ output/xgboost_model/
     └── feature_importance.png  # 特征重要性图
 ```
 
-### 步骤6：解读评估报告
+### 步骤5：解读评估报告
 
 打开 `output/xgboost_model/evaluation_report.json`：
 
@@ -410,6 +409,119 @@ output/xgboost_model/
 - **RMSE (254.32)**：平均预测误差254.32kN
 - **COV (0.0892)**：优秀，预测稳定性很好（<0.10）
 - **COV Mean Ratio (0.985)**：接近1.0，无系统性偏差
+
+---
+
+## Optuna 持久化存储与智能参数加载
+
+### 功能概述
+
+本项目集成了 Optuna 持久化存储和智能参数加载功能，实现了：
+- **断点续训**：Optuna 优化过程自动保存到 SQLite 数据库，可随时中断和恢复
+- **参数记录**：最优参数自动保存到 JSON 文件，便于查看和复用
+- **智能加载**：当 `use_optuna: false` 时，自动加载最优参数进行训练
+
+### 文件结构
+
+```
+logs/
+├── optuna_study.db      # Optuna 完整 study 数据库（自动生成）
+└── best_params.json     # 最优参数记录（自动生成）
+```
+
+### 使用方式
+
+#### 方式1：执行 Optuna 调优（自动保存）
+
+```bash
+# 1. 设置 use_optuna: true
+# 编辑 config/config.yaml:
+# model:
+#   use_optuna: true
+
+# 2. 运行训练
+python train.py --config config/config.yaml
+
+# 3. 自动生成文件：
+#    - logs/optuna_study.db（完整的 trials 记录）
+#    - logs/best_params.json（最优参数快照）
+```
+
+**日志输出示例**：
+```
+INFO:src.utils.model_utils:Best parameters saved to logs/best_params.json
+INFO:src.utils.model_utils:  Best RMSE: 554.9208 (Trial 79)
+INFO:src.utils.model_utils:  Timestamp: 2026-01-14T12:32:00
+```
+
+#### 方式2：使用已保存的最优参数（自动加载）
+
+```bash
+# 1. 设置 use_optuna: false
+# 编辑 config/config.yaml:
+# model:
+#   use_optuna: false
+
+# 2. 运行训练（自动加载最优参数）
+python train.py --config config/config.yaml
+```
+
+**日志输出示例**：
+```
+INFO:src.utils.model_utils:Loaded best parameters from logs/best_params.json
+INFO:src.utils.model_utils:  Best RMSE: 554.9208 (Trial 79)
+INFO:src.utils.model_utils:  Saved on: 2026-01-14T12:32:00
+INFO:src.model_trainer:Using loaded best parameters for training
+```
+
+#### 方式3：断点续训（累积 trials）
+
+```bash
+# 第一次运行：100 trials
+python train.py --config config/config.yaml
+# 输出：已完成 100 trials，最优 RMSE: 554.92
+
+# 第二次运行：继续增加 50 trials
+python train.py --config config/config.yaml
+# 输出：加载已有 study，已完成 150 trials
+```
+
+### best_params.json 文件格式
+
+```json
+{
+  "trial_number": 79,
+  "best_rmse": 554.9208295740007,
+  "parameters": {
+    "max_depth": 7,
+    "learning_rate": 0.10456477089212307,
+    "n_estimators": 547,
+    "subsample": 0.9059708763991396,
+    "colsample_bytree": 0.8685274806023014,
+    "min_child_weight": 20,
+    "reg_alpha": 1.1408620775128826,
+    "reg_lambda": 3.5871489124615974,
+    "gamma": 0.09873345991294272
+  },
+  "timestamp": "2026-01-14T12:32:00",
+  "n_trials_total": 100
+}
+```
+
+### 优势对比
+
+| 功能 | 传统方式 | 本项目实现 |
+|------|---------|-----------|
+| 参数持久化 | ❌ 每次重新开始 | ✅ SQLite 数据库持久化 |
+| 参数复用 | ❌ 手动复制粘贴 | ✅ 自动加载 JSON 文件 |
+| 断点续训 | ❌ 中断后重新运行 | ✅ 自动恢复并累积 trials |
+| 参数追溯 | ❌ 只有日志记录 | ✅ 完整的 trials 历史 |
+
+### 注意事项
+
+1. **logs/ 目录自动创建**：首次运行时会自动创建
+2. **文件覆盖**：每次运行会更新 `best_params.json` 和 `optuna_study.db`
+3. **参数优先级**：`use_optuna: false` 时，加载的参数会覆盖 config.yaml 中的默认参数
 
 ---
 
@@ -509,16 +621,9 @@ predictions = predictor.predict_batch(df, save_to="batch_predictions.csv")
 
 ### 快速开始
 
-#### 方式1：剔除几何参数（推荐）
-
 ```bash
+# 使用配置文件运行特征选择
 python feature_selection_pipeline.py --config config/config.yaml
-```
-
-#### 方式2：全量特征选择
-
-```bash
-python feature_selection_pipeline.py --config config/config_all_features.yaml
 ```
 
 ### 高级配置

@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 
 from src.utils.logger import get_logger
+from src.utils.model_utils import load_best_params, save_best_params
 
 logger = get_logger(__name__)
 
@@ -43,6 +44,13 @@ class ModelTrainer:
         self.optuna_timeout = optuna_timeout
         self.model: Optional[xgb.XGBRegressor] = None
         self.training_history = []
+
+        # Auto-load best parameters if use_optuna is False
+        if not self.use_optuna:
+            loaded_params = load_best_params()
+            if loaded_params is not None:
+                self.params.update(loaded_params)
+                logger.info("Using loaded best parameters for training")
 
         logger.info(f"ModelTrainer initialized with use_optuna={use_optuna}")
         logger.debug(f"Initial parameters: {json.dumps(self.params, indent=2)}")
@@ -216,6 +224,9 @@ class ModelTrainer:
         logger.info(f"Starting Optuna hyperparameter optimization with {n_trials} trials")
         logger.info(f"Optimization timeout: {self.optuna_timeout} seconds")
 
+        # Create logs directory if it doesn't exist
+        Path('logs').mkdir(parents=True, exist_ok=True)
+
         # Define objective function for Optuna
         def objective(trial):
             # Define hyperparameter search space - OPTIMIZED for COV < 0.05
@@ -289,9 +300,13 @@ class ModelTrainer:
 
             return np.mean(scores)
 
-        # Create Optuna study
-        study = optuna.create_study(direction='minimize',
-                                   study_name='xgboost_optimization')
+        # Create Optuna study with persistent storage
+        study = optuna.create_study(
+            direction='minimize',
+            study_name='xgboost_optimization',
+            storage='sqlite:///logs/optuna_study.db',
+            load_if_exists=True
+        )
 
         # Run optimization
         start_time = time.time()
@@ -301,10 +316,19 @@ class ModelTrainer:
         # Get best parameters
         best_params = study.best_params
         best_score = study.best_value
+        best_trial = study.best_trial
 
         logger.info(f"Optuna optimization completed in {opt_time:.2f} seconds")
         logger.info(f"Best RMSE: {best_score:.4f}")
         logger.info(f"Best parameters: {best_params}")
+
+        # Save best parameters to file
+        save_best_params(
+            best_params=best_params,
+            best_score=best_score,
+            trial_number=best_trial.number,
+            n_trials=len(study.trials)
+        )
 
         # Update model parameters with best found parameters
         self.params.update(best_params)

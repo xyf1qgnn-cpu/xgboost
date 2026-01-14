@@ -21,6 +21,7 @@ import traceback
 from pathlib import Path
 
 import pandas as pd
+from sklearn.model_selection import train_test_split
 
 from src.utils.logger import setup_logger
 from src.data_loader import DataLoader
@@ -91,22 +92,38 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
         features, target = data_loader.load_data(data_path, target_column)
         logger.info(f"Data loaded: {len(features)} samples, {len(features.columns)} features")
 
-        # Step 3: Preprocess data
+        # Step 2.5: Split data into train/test sets (FIXES DATA LEAKAGE)
+        logger.info("\nStep 2.5: Splitting data into train/test sets...")
+        test_size = data_config.get('test_size', 0.2)
+        random_state = data_config.get('random_state', 42)
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            features, target,
+            test_size=test_size,
+            random_state=random_state
+        )
+
+        logger.info(f"Training set: {len(X_train)} samples ({(1-test_size)*100:.0f}%)")
+        logger.info(f"Test set: {len(X_test)} samples ({test_size*100:.0f}%)")
+
+        # Step 3: Preprocess data (FIT ON TRAINING DATA ONLY - CRITICAL FIX)
         logger.info("\nStep 3: Preprocessing data...")
         preprocessor = Preprocessor(columns_to_drop=columns_to_drop)
-        features_processed = preprocessor.fit_transform(features)
-        logger.info(f"Preprocessing completed: {len(features_processed.columns)} features remaining")
+        X_train_processed = preprocessor.fit_transform(X_train)
+        X_test_processed = preprocessor.transform(X_test)
+        logger.info(f"Preprocessing completed: {len(X_train_processed.columns)} features remaining")
 
         # Get remaining feature names
         feature_names = preprocessor.get_remaining_features()
         logger.info(f"Remaining features: {feature_names}")
 
         # Check for missing values
-        missing_info = preprocessor.check_missing_values(features_processed)
-        if missing_info:
-            logger.warning(f"Found missing values: {missing_info}")
+        missing_info_train = preprocessor.check_missing_values(X_train_processed)
+        missing_info_test = preprocessor.check_missing_values(X_test_processed)
+        if missing_info_train or missing_info_test:
+            logger.warning(f"Found missing values - Train: {missing_info_train}, Test: {missing_info_test}")
         else:
-            logger.info("No missing values found")
+            logger.info("No missing values found in train or test sets")
 
         # Step 4: Train model
         logger.info("\nStep 4: Training XGBoost model...")
@@ -133,60 +150,89 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
         trainer = ModelTrainer(params=xgb_params, use_optuna=use_optuna,
                              n_trials=n_trials, optuna_timeout=optuna_timeout)
 
-        # Train model
-        model = trainer.train(features_processed, target)
-        logger.info("Model training completed")
+        # Train model on TRAINING DATA ONLY
+        model = trainer.train(X_train_processed, y_train)
+        logger.info("Model training completed on training data")
 
-        # Optional: Hyperparameter optimization
+        # Optional: Hyperparameter optimization (uses training data only)
         if use_optuna:
             logger.info("Starting Optuna hyperparameter optimization...")
             opt_results = trainer.optimize_hyperparameters(
-                features_processed, target,
+                X_train_processed, y_train,  # Training data only
                 cv=cv_config.get('n_splits', 5)
             )
             logger.info(f"Optuna optimization completed: {opt_results['n_trials']} trials")
 
-        # Step 5: Cross-validation
-        logger.info("\nStep 5: Performing cross-validation...")
+        # Step 5: Cross-validation on training data only
+        logger.info("\nStep 5: Performing cross-validation on training data...")
         cv_results = trainer.cross_validate(
-            features_processed, target,
+            X_train_processed, y_train,  # Training data only
             cv=cv_config.get('n_folds', 5)
         )
         logger.info(f"Cross-validation RMSE: {cv_results['mean_cv_score']:.4f} (+/- {cv_results['std_cv_score']:.4f})")
 
-        # Step 6: Evaluate model
+        # Step 6: Evaluate model on BOTH training and test sets
         logger.info("\nStep 6: Evaluating model...")
         evaluator = Evaluator()
 
-        # Make predictions on training data
+        # Make predictions on BOTH sets
         from src.predictor import Predictor
         predictor = Predictor(model, preprocessor, feature_names)
-        predictions = predictor.predict(features)
+        y_train_pred = predictor.predict(X_train)
+        y_test_pred = predictor.predict(X_test)
 
-        # Calculate metrics
-        evaluation_result = evaluator.calculate_metrics(target, predictions)
-        logger.info(f"Model evaluation completed:")
-        logger.info(f"  RMSE: {evaluation_result['rmse']:.4f}")
-        logger.info(f"  MAE: {evaluation_result['mae']:.4f}")
-        logger.info(f"  R²: {evaluation_result['r2']:.4f}")
-        if evaluation_result['mape']:
-            logger.info(f"  MAPE: {evaluation_result['mape']:.2f}%")
-        if evaluation_result['cov']:
-            logger.info(f"  COV: {evaluation_result['cov']:.4f} (μ≈1.0 indicates no bias, <0.10 excellent)")
+        # Calculate training metrics
+        train_metrics = evaluator.calculate_metrics(y_train, y_train_pred)
+        logger.info(f"Training set evaluation:")
+        logger.info(f"  RMSE: {train_metrics['rmse']:.4f}")
+        logger.info(f"  MAE: {train_metrics['mae']:.4f}")
+        logger.info(f"  R²: {train_metrics['r2']:.4f}")
+        if train_metrics['mape']:
+            logger.info(f"  MAPE: {train_metrics['mape']:.2f}%")
+        if train_metrics['cov']:
+            logger.info(f"  COV: {train_metrics['cov']:.4f}")
 
-        # Step 7: Create visualizations
+        # Calculate test metrics (TRUE GENERALIZATION)
+        test_metrics = evaluator.calculate_metrics(y_test, y_test_pred)
+        logger.info(f"Test set evaluation (TRUE GENERALIZATION):")
+        logger.info(f"  RMSE: {test_metrics['rmse']:.4f}")
+        logger.info(f"  MAE: {test_metrics['mae']:.4f}")
+        logger.info(f"  R²: {test_metrics['r2']:.4f}")
+        if test_metrics['mape']:
+            logger.info(f"  MAPE: {test_metrics['mape']:.2f}%")
+        if test_metrics['cov']:
+            logger.info(f"  COV: {test_metrics['cov']:.4f}")
+
+        # Check for overfitting
+        rmse_ratio = test_metrics['rmse'] / train_metrics['rmse']
+        if rmse_ratio > 1.2:
+            logger.warning(f"Potential overfitting detected! Test RMSE is {rmse_ratio:.2f}x training RMSE")
+        elif rmse_ratio < 0.8:
+            logger.warning(f"Unusual: Test RMSE is lower than training RMSE (ratio: {rmse_ratio:.2f})")
+        else:
+            logger.info(f"Model generalization appears healthy (train/test RMSE ratio: {rmse_ratio:.2f})")
+
+        # Step 7: Create visualizations for BOTH training and test sets
         logger.info("\nStep 7: Creating visualizations...")
         output_path = Path(output_dir)
         plots_dir = output_path / "plots"
         plots_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate prediction scatter plot
+        # Training set plots
         create_evaluation_dashboard(
-            target, predictions, model, feature_names,
-            str(plots_dir), "xgboost_model"
+            y_train, y_train_pred, model, feature_names,
+            str(plots_dir), "xgboost_model_train"
         )
 
-        logger.info(f"Visualizations saved to {plots_dir}")
+        # Test set plots (PRIMARY - shows true generalization)
+        create_evaluation_dashboard(
+            y_test, y_test_pred, model, feature_names,
+            str(plots_dir), "xgboost_model_test"
+        )
+
+        logger.info(f"Visualizations saved to {plots_dir}/")
+        logger.info(f"  Training: xgboost_model_train_*.png")
+        logger.info(f"  Test:     xgboost_model_test_*.png")
 
         # Step 8: Save model and artifacts
         logger.info("\nStep 8: Saving model and artifacts...")
@@ -194,12 +240,19 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
         # Save model with metadata
         metadata = {
             'config': config,
-            'evaluation_metrics': evaluation_result,
+            'train_metrics': train_metrics,      # NEW
+            'test_metrics': test_metrics,        # NEW (primary)
             'cross_validation_results': cv_results,
             'feature_names': feature_names,
-            'n_samples': len(features),
+            'n_train_samples': len(X_train),     # NEW
+            'n_test_samples': len(X_test),       # NEW
             'n_features': len(feature_names),
-            'training_successful': True
+            'test_size': test_size,              # NEW
+            'training_successful': True,
+            'overfitting_check': {
+                'rmse_ratio': rmse_ratio,
+                'detected': rmse_ratio > 1.2
+            }
         }
 
         save_model(
@@ -235,8 +288,18 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
             {
                 'model_name': 'xgboost_model',
                 'timestamp': pd.Timestamp.now().isoformat(),
-                'metrics': evaluation_result,
-                'cv_results': serializable_cv_results
+                'train_metrics': train_metrics,      # NEW
+                'test_metrics': test_metrics,        # NEW (primary focus)
+                'cv_results': serializable_cv_results,
+                'data_split': {
+                    'n_train': len(X_train),
+                    'n_test': len(X_test),
+                    'test_size': test_size
+                },
+                'overfitting_analysis': {
+                    'rmse_ratio': rmse_ratio,
+                    'status': 'overfitting' if rmse_ratio > 1.2 else 'healthy'
+                }
             },
             str(eval_report_path)
         )
@@ -251,12 +314,22 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
         logger.info(f"Preprocessor saved to: {output_dir}/preprocessor.pkl")
         logger.info(f"Evaluation report: {eval_report_path}")
         logger.info(f"Plots saved to: {plots_dir}/")
+        logger.info("\n" + "=" * 80)
+        logger.info("PERFORMANCE SUMMARY")
+        logger.info("=" * 80)
+        logger.info(f"Training: RMSE={train_metrics['rmse']:.4f}, R²={train_metrics['r2']:.4f}")
+        logger.info(f"Test:     RMSE={test_metrics['rmse']:.4f}, R²={test_metrics['r2']:.4f}")
+        logger.info(f"CV:       RMSE={-cv_results['mean_cv_score']:.4f}")
+        logger.info(f"Ratio:    {rmse_ratio:.2f} ({'OVERFIT' if rmse_ratio > 1.2 else 'OK'})")
+        if test_metrics['cov']:
+            logger.info(f"Test COV: {test_metrics['cov']:.4f}")
         logger.info("=" * 80)
 
         return {
             'model': model,
             'preprocessor': preprocessor,
-            'metrics': evaluation_result,
+            'train_metrics': train_metrics,   # NEW
+            'test_metrics': test_metrics,     # NEW
             'cv_results': cv_results,
             'feature_names': feature_names,
             'output_dir': output_dir

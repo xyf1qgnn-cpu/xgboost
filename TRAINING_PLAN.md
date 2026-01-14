@@ -116,41 +116,47 @@ python train.py --config config/config.yaml
 
 ### Stage 2: Optuna深度调优（目标COV < 0.05）
 
-**配置文件**: `config/config_stage2_optuna.yaml`
-**启用Optuna**: `use_optuna: true`
+**配置文件**: `config/config.yaml`
+**修改步骤**: 在config.yaml中设置 `use_optuna: true`
 **目标**: 通过超参数搜索，实现COV < 0.05
 
-**Optuna配置优化**:
+**Optuna配置**（在config.yaml中）:
 ```yaml
 model:
-  use_optuna: true
-  n_trials: 200             # ↑ 从100增至200，更充分搜索
-  optuna_timeout: 7200      # ↑ 从1小时增至2小时
+  use_optuna: true           # 从 false 改为 true
+  n_trials: 200              # 200次试验，更充分搜索
+  optuna_timeout: 7200       # 2小时超时
 ```
 
-**搜索空间优化**（src/model_trainer.py）:
+**搜索空间优化**（已在src/model_trainer.py中配置）:
 ```python
-# 为应对离群值和COV<0.05目标，调整搜索空间：
+# 为应对离群值和COV<0.05目标，搜索空间已优化：
 max_depth:     trial.suggest_int(3, 7)        # 上限从10降至7
-learning_rate: trial.suggest_float(0.05, 0.2, log=True)  # 范围收窄
-n_estimators:  trial.suggest_int(250, 600)    # 下限从100提至250
-subsample:     trial.suggest_float(0.85, 0.98)  # 从0.6-1.0移至0.85-0.98（更高稳定性）
-colsample:     trial.suggest_float(0.85, 0.98)  # 同上
-min_child_weight: trial.suggest_int(5, 20)    # 关键！从1-10提至5-20
-reg_alpha:     trial.suggest_float(0.1, 2.0, log=True)  # 从1e-8-1.0提至0.1-2.0
-reg_lambda:    trial.suggest_float(1.0, 10.0, log=True) # 从1e-8-1.0提至1.0-10.0
-gamma:         trial.suggest_float(0.05, 0.3)  # 新增参数，控制分裂质量
+learning_rate: trial.suggest_float(0.05, 0.2, log=True)
+n_estimators:  trial.suggest_int(250, 600)
+subsample:     trial.suggest_float(0.85, 0.98)
+colsample:     trial.suggest_float(0.85, 0.98)
+min_child_weight: trial.suggest_int(5, 20)    # 关键！从5-20，应对离群值
+reg_alpha:     trial.suggest_float(0.1, 2.0, log=True)
+reg_lambda:    trial.suggest_float(1.0, 10.0, log=True)
+gamma:         trial.suggest_float(0.05, 0.3)
 ```
 
-**执行命令**:
+**执行步骤**:
 ```bash
-# Stage 2: Enable Optuna tuning
-python train.py --config config/config_stage2_optuna.yaml
+# 1. 编辑 config/config.yaml
+#    将 use_optuna: false 改为 use_optuna: true
+
+# 2. 执行Stage 2训练
+python train.py --config config/config.yaml
 
 # 预期结果：
 # - 训练时间: ~30-60分钟（200次试验）
 # - COV目标: <0.05（优秀）
 # - R²目标: 保持>0.95
+
+# 3. 训练完成后恢复配置（可选）
+#    将 use_optuna: true 改回 use_optuna: false
 ```
 
 **搜索策略**:
@@ -221,11 +227,14 @@ cat output/training_metadata.json
 ### Step 3: （如果需要）执行Stage 2
 
 ```bash
-# Run Stage 2 (Optuna tuning)
-python train.py --config config/config_stage2_optuna.yaml
+# 1. 编辑 config/config.yaml
+#    将 use_optuna: false 改为 use_optuna: true
+
+# 2. 执行Stage 2训练
+python train.py --config config/config.yaml
 
 # 监控训练进度（另开一个终端）
-tail -f output/logs/cfst_xgboost_stage2.log
+tail -f output/ml_pipeline.log
 ```
 
 **监控指标**:
@@ -241,9 +250,9 @@ tail -f output/logs/cfst_xgboost_stage2.log
 echo "Stage 1 - COV: $(cat output/evaluation_report.json | jq '.metrics.cov')"
 echo "Stage 1 - R²: $(cat output/evaluation_report.json | jq '.metrics.r2')"
 
-# Stage 2结果
-echo "Stage 2 - COV: $(cat output_stage2/evaluation_report_optuna.json | jq '.metrics.cov')"
-echo "Stage 2 - R²: $(cat output_stage2/evaluation_report_optuna.json | jq '.metrics.r2')"
+# Stage 2结果（Stage 2会覆盖 output/ 目录）
+echo "Stage 2 - COV: $(cat output/evaluation_report.json | jq '.metrics.cov')"
+echo "Stage 2 - R²: $(cat output/evaluation_report.json | jq '.metrics.r2')"
 ```
 
 ### Step 5: 选择最优模型
@@ -319,10 +328,11 @@ echo "Stage 2 - R²: $(cat output_stage2/evaluation_report_optuna.json | jq '.me
 3. 交叉验证计算开销
 
 **解决方案**:
-```python
-# 在config_stage2_optuna.yaml中调整：
-n_trials: 150        # 从200降低到150
-optuna_timeout: 3600 # 从7200降低到3600秒
+```yaml
+# 在config/config.yaml中调整：
+model:
+  n_trials: 150        # 从200降低到150
+  optuna_timeout: 3600 # 从7200降低到3600秒
 ```
 
 ### 问题3: Stage 2后COV改善不明显
@@ -447,16 +457,16 @@ from sklearn.preprocessing import FunctionTransformer
 ### 立即执行任务
 
 - [x] **分析相关系数矩阵** - 确定剔除6个参数
-- [x] **配置Stage 1** - `config/config.yaml` (禁用Optuna)
-- [x] **配置Stage 2** - `config/config_stage2_optuna.yaml` (启用Optuna)
+- [x] **配置训练文件** - `config/config.yaml` (通过use_optuna切换阶段)
 - [x] **优化Optuna搜索空间** - `src/model_trainer.py`
 - [x] **创建训练计划文档** - `TRAINING_PLAN.md`
+- [x] **简化配置管理** - 删除冗余配置文件，仅保留config.yaml
 
 ### 待执行任务
 
-- [ ] **执行Stage 1训练** - 评估基准COV
+- [ ] **执行Stage 1训练** - 评估基准COV (use_optuna: false)
 - [ ] **验证COV指标** - 判断是否进入Stage 2
-- [ ] **（如果需要）执行Stage 2** - 启用Optuna调优
+- [ ] **（如果需要）执行Stage 2** - 修改use_optuna: true，启用Optuna调优
 - [ ] **验证最终指标** - 确保COV < 0.05
 - [ ] **模型部署准备** - 保存最优模型
 
