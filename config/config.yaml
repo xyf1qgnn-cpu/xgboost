@@ -80,7 +80,7 @@ model:
   # Optuna hyperparameter optimization - ENABLED for Stage 2
   # Stage 1: Evaluate baseline COV with conservative parameters
   # Stage 2: Enable Optuna to target COV < 0.05
-  use_optuna: true
+  use_optuna: false
 
   # Number of Optuna trials (if enabled)
   n_trials: 300

@@ -155,7 +155,7 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
 
         # Initialize trainer with parameters
         use_optuna = model_config.get('use_optuna', False)
-        n_trials = model_config.get('optuna_trials', 100)
+        n_trials = model_config.get('n_trials', 100)
         optuna_timeout = model_config.get('optuna_timeout', 3600)
 
         # Prepare XGBoost parameters
