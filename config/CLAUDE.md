@@ -7,6 +7,10 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
+| #1349 | 7:04 PM | ✅ | 启用Optuna超参数优化以改善COV性能 | ~40 |
+| #1330 | 6:25 PM | 🟣 | ln(Nexp)目标变换完整实现完成 | ~91 |
+| #1328 | 6:24 PM | 🟣 | ln(Nexp)目标变换配置集成完成 | ~104 |
+| #1318 | 6:18 PM | 🔵 | 当前配置文件状态确认 | ~35 |
 | #1312 | 5:15 PM | 🔵 | Configuration File Shows Proper Test Split Setup | ~212 |
 | #1290 | 4:35 PM | ✅ | ✅ Data Leakage Fix Plan - COMPLETE | ~254 |
 | #1276 | 4:17 PM | 🔵 | Configuration File Shows Updated Target Column and Test Size | ~211 |

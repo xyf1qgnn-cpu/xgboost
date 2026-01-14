@@ -5,6 +5,7 @@ This module handles loading data from CSV files and preparing it for ML processi
 """
 
 import pandas as pd
+import numpy as np
 from typing import Tuple, List, Optional
 from pathlib import Path
 
@@ -30,19 +31,23 @@ class DataLoader:
         self.required_columns = required_columns or []
         self.features_df: Optional[pd.DataFrame] = None
         self.target_series: Optional[pd.Series] = None
+        self.target_raw: Optional[pd.Series] = None  # Original target before transform
+        self.target_transform: Optional[str] = None  # Store transform type
         self.feature_names: List[str] = []
         self.target_name: str = ""
 
-    def load_data(self, file_path: str, target_column: str) -> Tuple[pd.DataFrame, pd.Series]:
+    def load_data(self, file_path: str, target_column: str,
+                  target_transform: Optional[str] = None) -> Tuple[pd.DataFrame, pd.Series]:
         """
-        Load data from CSV file.
+        Load data from CSV file with optional target transformation.
 
         Args:
             file_path: Path to CSV file
             target_column: Name of the target column
+            target_transform: Transformation type ('log', 'sqrt', None)
 
         Returns:
-            Tuple of (features_df, target_series)
+            Tuple of (features_df, target_series_transformed)
 
         Raises:
             FileNotFoundError: If file does not exist
@@ -81,9 +86,27 @@ class DataLoader:
 
         # Separate features and target
         self.target_name = target_column
-        self.target_series = df[target_column].copy()
+        target_raw = df[target_column].copy()
         self.features_df = df.drop(columns=[target_column]).copy()
         self.feature_names = self.features_df.columns.tolist()
+
+        # Store original target values (for inverse transform and evaluation)
+        self.target_raw = target_raw
+
+        # Apply target transformation if specified
+        self.target_transform = target_transform
+        if target_transform == 'log':
+            self.target_series = np.log(target_raw)
+            logger.info(f"Applied log transform to target: {target_column}")
+            logger.info(f"  Original range: [{target_raw.min():.2f}, {target_raw.max():.2f}]")
+            logger.info(f"  Transformed range: [{self.target_series.min():.4f}, {self.target_series.max():.4f}]")
+        elif target_transform == 'sqrt':
+            self.target_series = np.sqrt(target_raw)
+            logger.info(f"Applied sqrt transform to target: {target_column}")
+            logger.info(f"  Original range: [{target_raw.min():.2f}, {target_raw.max():.2f}]")
+            logger.info(f"  Transformed range: [{self.target_series.min():.4f}, {self.target_series.max():.4f}]")
+        else:
+            self.target_series = target_raw
 
         logger.info(f"Data split into {len(self.feature_names)} features and 1 target")
         logger.info(f"Target column: {self.target_name}")

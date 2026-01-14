@@ -8,6 +8,12 @@ data:
   # Target column name (label)
   target_column: "Nexp (kN)"
 
+  # Target transformation configuration
+  # ln(Nexp) transform to reduce impact of large values and improve COV
+  target_transform:
+    enabled: true
+    type: "log"  # log, sqrt, none
+
   # Columns to drop (absolute geometric parameters)
   columns_to_drop:
     - "b (mm)"
@@ -71,13 +77,13 @@ model:
     # Number of parallel threads
     n_jobs: -1
 
-  # Optuna hyperparameter optimization - DISABLED for Stage 1
+  # Optuna hyperparameter optimization - ENABLED for Stage 2
   # Stage 1: Evaluate baseline COV with conservative parameters
   # Stage 2: Enable Optuna to target COV < 0.05
-  use_optuna: false
+  use_optuna: true
 
   # Number of Optuna trials (if enabled)
-  n_trials: 200
+  n_trials: 300
 
   # Optuna timeout (seconds)
   optuna_timeout: 7200  # 2 hours for thorough search
