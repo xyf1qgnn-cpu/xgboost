@@ -7,6 +7,8 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
+| #1390 | 8:39 PM | 🔵 | Confirmed Configuration Parameters for Outlier Analysis Implementation | ~40 |
+| #1385 | 8:36 PM | 🔵 | Located Configuration File with Data and Model Parameters | ~38 |
 | #1349 | 7:04 PM | ✅ | 启用Optuna超参数优化以改善COV性能 | ~40 |
 | #1330 | 6:25 PM | 🟣 | ln(Nexp)目标变换完整实现完成 | ~91 |
 | #1328 | 6:24 PM | 🟣 | ln(Nexp)目标变换配置集成完成 | ~104 |

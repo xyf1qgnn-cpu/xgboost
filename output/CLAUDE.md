@@ -7,7 +7,7 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #1357 | 8:21 PM | 🔵 | Identified Large Max Error in Model Evaluation | ~228 |
-| #1232 | 3:55 PM | 🔵 | Training test completed successfully with baseline parameters | ~102 |
-| #1198 | 3:17 PM | 🔵 | Training metadata reveals Stage 1 results | ~82 |
+| #1400 | 8:44 PM | 🔵 | Explained Error Metrics from Outlier Analysis | ~128 |
+| #1368 | 8:23 PM | 🔵 | Analyzed Evaluation Report with Max Error Details | ~104 |
+| #1339 | 6:58 PM | 🔵 | ln变换训练结果分析 - 发现COV未达标 | ~89 |
 </claude-mem-context>
