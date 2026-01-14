@@ -218,17 +218,50 @@ class ModelTrainer:
 
         # Define objective function for Optuna
         def objective(trial):
-            # Define hyperparameter search space
+            # Define hyperparameter search space - OPTIMIZED for COV < 0.05
+            # Rationale: Data has 9.3% outliers (380 samples), target COV < 0.05
             params = {
                 'objective': 'reg:squarederror',
-                'max_depth': trial.suggest_int('max_depth', 3, 10),
-                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3, log=True),
-                'n_estimators': trial.suggest_int('n_estimators', 100, 500),
-                'subsample': trial.suggest_float('subsample', 0.6, 1.0),
-                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.6, 1.0),
-                'min_child_weight': trial.suggest_int('min_child_weight', 1, 10),
-                'reg_alpha': trial.suggest_float('reg_alpha', 1e-8, 1.0, log=True),
-                'reg_lambda': trial.suggest_float('reg_lambda', 1e-8, 1.0, log=True),
+
+                # max_depth: REDUCED range to prevent overfitting to outliers
+                # Outlier-heavy data (max=46000, median=1601) requires strong regularization
+                # Range: 3-7 (previous: 3-10)
+                'max_depth': trial.suggest_int('max_depth', 3, 7),
+
+                # learning_rate: NARROWED range for stable convergence
+                # Range: 0.05-0.2 (previous: 0.01-0.3)
+                'learning_rate': trial.suggest_float('learning_rate', 0.05, 0.2, log=True),
+
+                # n_estimators: INCREASED range to compensate for lower depth
+                # Range: 250-600 (previous: 100-500)
+                'n_estimators': trial.suggest_int('n_estimators', 250, 600),
+
+                # subsample: SHIFTED toward higher values for stability
+                # Range: 0.85-0.98 (previous: 0.6-1.0)
+                'subsample': trial.suggest_float('subsample', 0.85, 0.98),
+
+                # colsample_bytree: SHIFTED toward higher values for stability
+                # Range: 0.85-0.98 (previous: 0.6-1.0)
+                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.85, 0.98),
+
+                # min_child_weight: SIGNIFICANTLY INCREASED range for outlier robustness
+                # 380 outliers (9.3%) require high weight to prevent overfitting
+                # Range: 5-20 (previous: 1-10)
+                'min_child_weight': trial.suggest_int('min_child_weight', 5, 20),
+
+                # reg_alpha: INCREASED range for stronger L1 regularization
+                # Range: 0.1-2.0 (previous: 1e-8-1.0)
+                'reg_alpha': trial.suggest_float('reg_alpha', 0.1, 2.0, log=True),
+
+                # reg_lambda: SIGNIFICANTLY INCREASED range for stronger L2 regularization
+                # Range: 1.0-10.0 (previous: 1e-8-1.0)
+                'reg_lambda': trial.suggest_float('reg_lambda', 1.0, 10.0, log=True),
+
+                # gamma: MODERATE minimum loss reduction
+                # Range: 0.05-0.3 (previous: not in search space)
+                'gamma': trial.suggest_float('gamma', 0.05, 0.3),
+
+                # Fixed parameters
                 'random_state': self.params.get('random_state', 42),
                 'tree_method': 'hist',
                 'device': 'cpu',

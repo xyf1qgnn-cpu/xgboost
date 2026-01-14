@@ -1,0 +1,12 @@
+Comparison,Without_Geometric,With_Geometric
+Initial_features,18,24
+Best_R2_score,0.9964,0.9965
+Best_R2_features,17,21
+Best_RMSE,204.24,200.53
+Best_R2_COV,0.1049,0.1116
+Best_CV_score,-630.42,-639.53
+Best_CV_features,17,19
+Best_CV_COV,0.1049,0.1081
+Elbow_features,8,6
+Elbow_R2,0.9916,0.9739
+Elbow_COV,0.1629,0.1956

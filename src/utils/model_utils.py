@@ -6,6 +6,7 @@ This module handles saving and loading trained models, preprocessors, and metada
 
 import joblib
 import json
+import numpy as np
 from pathlib import Path
 from typing import Tuple, List, Any, Optional
 import pandas as pd

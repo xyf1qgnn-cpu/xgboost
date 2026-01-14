@@ -89,6 +89,38 @@ class Evaluator:
             mean_pred = np.mean(y_pred_array)
             mean_true = np.mean(y_true_array)
 
+            # Calculate Coefficient of Variation (COV)
+            # COV = σ / μ where ξ_i = y_pred_i / y_test_i
+            # In civil engineering, COV assesses prediction stability and dispersion
+            try:
+                # Calculate ratio ξ_i = y_pred_i / y_test_i for each sample
+                # ξ > 1: prediction larger than actual (potentially unsafe)
+                # ξ < 1: prediction conservative/safe
+                ratios = y_pred_array / y_true_array
+
+                # Filter out invalid ratios (inf, NaN, caused by division by zero)
+                valid_mask = np.isfinite(ratios) & (y_true_array != 0)
+                valid_ratios = ratios[valid_mask]
+
+                if len(valid_ratios) > 0:
+                    # Calculate mean μ and standard deviation σ of ξ_i
+                    mean_ratio = np.mean(valid_ratios)
+                    std_ratio = np.std(valid_ratios, ddof=1)  # Sample standard deviation
+
+                    # Calculate COV = σ / μ
+                    # μ ≈ 1.0 indicates no systematic bias
+                    cov = std_ratio / mean_ratio if mean_ratio != 0 else np.nan
+
+                    logger.info(f"COV: {cov:.4f} (μ={mean_ratio:.4f}, σ={std_ratio:.4f})")
+                    logger.info(f"Ratio range: [{np.min(valid_ratios):.4f}, {np.max(valid_ratios):.4f}]")
+                else:
+                    cov = np.nan
+                    logger.warning("Cannot calculate COV: no valid ratios (all y_test_i = 0 or infinite)")
+
+            except Exception as e:
+                cov = np.nan
+                logger.warning(f"COV calculation failed: {str(e)}")
+
             # Create metrics dictionary
             metrics = {
                 'rmse': float(rmse),
@@ -99,6 +131,7 @@ class Evaluator:
                 'max_error': float(max_error),
                 'mean_prediction': float(mean_pred),
                 'mean_actual': float(mean_true),
+                'cov': float(cov) if not np.isnan(cov) else None,
                 'n_samples': len(y_true_array)
             }
 
@@ -109,6 +142,9 @@ class Evaluator:
             if not np.isnan(mape):
                 logger.info(f"MAPE: {mape:.2f}%")
             logger.info(f"Max Error: {max_error:.4f}")
+            if not np.isnan(cov):
+                logger.info(f"COV: {cov:.4f}")
+                logger.info(f"Ratio Mean: {mean_ratio:.4f}, Std: {std_ratio:.4f}")
 
             return metrics
 
@@ -314,6 +350,7 @@ class Evaluator:
                 'MAE': metrics.get('mae'),
                 'R²': metrics.get('r2'),
                 'MAPE': metrics.get('mape'),
+                'COV': metrics.get('cov'),
                 'Samples': metrics.get('n_samples')
             })
 

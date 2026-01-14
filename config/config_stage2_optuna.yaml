@@ -1,0 +1,161 @@
+# CFST XGBoost Pipeline Configuration - STAGE 2 (Optuna Tuning)
+# This configuration is optimized for targeting COV < 0.05
+# Use this after evaluating baseline performance from Stage 1
+
+# Data configuration
+data:
+  # Input data file path - deduplicated dataset
+  file_path: "data/raw/feature_parameters_unique.csv"
+
+  # Target column name (label)
+  target_column: "Nexp (kN)"
+
+  # Columns to drop - 6 geometric parameters that cause R² inflation
+  # Rationale: b, h have extremely high correlation with Nexp (0.76-0.77)
+  #            forcing model to learn dimensionless relationships improves COV
+  columns_to_drop:
+    - "b (mm)"          # r=0.760 with Nexp - linear relationship inflates R²
+    - "h (mm)"          # r=0.774 with Nexp - linear relationship inflates R²
+    - "r0 (mm)"         # Info captured by r0/h ratio
+    - "t (mm)"          # Info captured by As and te
+    - "L (mm)"          # Info captured by lambda_bar
+    - "lambda"          # Info captured by lambda_bar
+
+  # Train-test split ratio
+  test_size: 0.2
+
+  # Random seed for reproducibility
+  random_state: 42
+
+# XGBoost model parameters
+model:
+  # Optuna hyperparameter optimization - ENABLED for Stage 2
+  # Goal: Achieve COV < 0.05 with 4084 samples (380 outliers = 9.3%)
+  use_optuna: true
+
+  # Number of Optuna trials - INCREASED for comprehensive search
+  # Rationale: COV < 0.05 is very strict, requires thorough optimization
+  n_trials: 200
+
+  # Optuna timeout (seconds) - 2 hours
+  # Rationale: Ensure all 200 trials complete for 4084 samples
+  optuna_timeout: 7200
+
+  # XGBoost hyperparameters - BASELINE for Optuna
+  # Optuna will search around these values in optimize_hyperparameters()
+  params:
+    # Learning objective
+    objective: "reg:squarederror"
+
+    # Maximum depth of trees - NARROWED range to prevent overfitting
+    # Search space: trial.suggest_int('max_depth', 3, 6)
+    # Target: Strong regularization for outlier-heavy data (9.3% outliers)
+    max_depth: 4
+
+    # Learning rate (eta) - LOWERED for stable convergence
+    # Search space: trial.suggest_float('learning_rate', 0.05, 0.15, log=True)
+    learning_rate: 0.08
+
+    # Number of boosting rounds - INCREASED to compensate for lower depth
+    # Search space: trial.suggest_int('n_estimators', 250, 500)
+    n_estimators: 400
+
+    # Subsample ratio - INCREASED for stability with outliers
+    # Search space: trial.suggest_float('subsample', 0.85, 0.95)
+    subsample: 0.9
+
+    # Column subsample ratio - INCREASED for stability
+    # Search space: trial.suggest_float('colsample_bytree', 0.85, 0.95)
+    colsample_bytree: 0.9
+
+    # Minimum child weight - SIGNIFICANTLY INCREASED for outlier robustness
+    # Search space: trial.suggest_int('min_child_weight', 5, 15)
+    # Rationale: 380 outliers (9.3%) require high min_child_weight
+    min_child_weight: 8
+
+    # L1 regularization - MODERATE for feature selection
+    # Search space: trial.suggest_float('reg_alpha', 0.1, 1.0, log=True)
+    reg_alpha: 0.5
+
+    # L2 regularization - STRONG to prevent overfitting to outliers
+    # Search space: trial.suggest_float('reg_lambda', 1.0, 5.0, log=True)
+    reg_lambda: 2.0
+
+    # Minimum loss reduction to make a split - INCREASED
+    # Search space: trial.suggest_float('gamma', 0.05, 0.3)
+    gamma: 0.1
+
+    # Random seed
+    random_state: 42
+
+    # Tree method - hist for fast training
+    tree_method: "hist"
+
+    # Device (cpu/gpu)
+    device: "cpu"
+
+    # Number of parallel threads
+    n_jobs: -1
+
+# Cross-validation configuration
+cv:
+  # Number of folds - MAINTAIN at 5
+  n_splits: 5
+
+  # Random seed for split
+  random_state: 42
+
+  # Shuffle data before splitting - IMPORTANT for outlier distribution
+  shuffle: true
+
+# Paths configuration
+paths:
+  # Output directory for results
+  output_dir: "output_stage2"
+
+  # Directory for saved models
+  model_dir: "models"
+
+  # Model file name
+  model_output: "xgboost_model_optuna.pkl"
+
+  # Preprocessor file name
+  preprocessor_output: "preprocessor_optuna.pkl"
+
+  # Feature names file
+  feature_names_output: "feature_names_optuna.json"
+
+  # Training metadata file
+  metadata_output: "training_metadata_optuna.json"
+
+  # Feature importance plot
+  feature_importance_plot: "feature_importance_optuna.png"
+
+  # Predictions vs actual plot
+  predictions_plot: "predictions_vs_actual_optuna.png"
+
+  # Evaluation report
+  evaluation_report: "evaluation_report_optuna.json"
+
+  # Logs directory
+  logs_dir: "logs"
+
+# Logging configuration
+logging:
+  # Log level (DEBUG, INFO, WARNING, ERROR)
+  level: "INFO"
+
+  # Log format
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+  # Log file name
+  file_name: "cfst_xgboost_stage2.log"
+
+# Stage 2 specific notes:
+# 1. This config targets COV < 0.05 with outlier-heavy data (9.3% outliers)
+# 2. Run this AFTER Stage 1 baseline evaluation
+# 3. Expected training time: ~30-60 minutes with 200 trials
+# 4. If COV remains > 0.05, consider:
+#    a. Increasing n_trials to 300
+#    b. Adjusting search space in src/model_trainer.py
+#    c. Investigating feature engineering or target transformation

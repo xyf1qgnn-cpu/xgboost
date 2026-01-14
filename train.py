@@ -171,6 +171,8 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
         logger.info(f"  R²: {evaluation_result['r2']:.4f}")
         if evaluation_result['mape']:
             logger.info(f"  MAPE: {evaluation_result['mape']:.2f}%")
+        if evaluation_result['cov']:
+            logger.info(f"  COV: {evaluation_result['cov']:.4f} (μ≈1.0 indicates no bias, <0.10 excellent)")
 
         # Step 7: Create visualizations
         logger.info("\nStep 7: Creating visualizations...")

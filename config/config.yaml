@@ -3,7 +3,7 @@
 # Data configuration
 data:
   # Input data file path
-  file_path: "feature_parameters.csv"
+  file_path: "data/raw/feature_parameters_unique.csv"
 
   # Target column name (label)
   target_column: "Nexp (kN)"
@@ -25,25 +25,39 @@ data:
 
 # XGBoost model parameters
 model:
-  # XGBoost hyperparameters
+  # XGBoost hyperparameters - Stage 1 Configuration
+  # Designed to prevent overfitting and improve COV for outlier-heavy data
   params:
     # Learning objective
     objective: "reg:squarederror"
 
-    # Maximum depth of trees
-    max_depth: 6
+    # Maximum depth of trees - REDUCED to prevent overfitting to outliers
+    # Target COV < 0.05 requires strong regularization
+    max_depth: 4
 
-    # Learning rate (eta)
-    learning_rate: 0.1
+    # Learning rate (eta) - Lowered for more stable convergence
+    learning_rate: 0.08
 
-    # Number of boosting rounds
-    n_estimators: 200
+    # Number of boosting rounds - Increased to compensate for lower depth
+    n_estimators: 400
 
-    # Subsample ratio of training instances
-    subsample: 0.8
+    # Subsample ratio of training instances - Increased for stability
+    subsample: 0.9
 
-    # Subsample ratio of columns for each tree
-    colsample_bytree: 0.8
+    # Subsample ratio of columns for each tree - Increased for stability
+    colsample_bytree: 0.9
+
+    # Minimum child weight - INCREASED to handle outliers (380 outliers = 9.3%)
+    min_child_weight: 8
+
+    # L1 regularization - ADDED for feature selection and sparsity
+    reg_alpha: 0.5
+
+    # L2 regularization - ADDED to prevent overfitting to outliers
+    reg_lambda: 2.0
+
+    # Minimum loss reduction to make a split
+    gamma: 0.1
 
     # Random seed
     random_state: 42
@@ -54,14 +68,19 @@ model:
     # Device (use cpu to avoid GPU dependency)
     device: "cpu"
 
-  # Optuna hyperparameter optimization
+    # Number of parallel threads
+    n_jobs: -1
+
+  # Optuna hyperparameter optimization - DISABLED for Stage 1
+  # Stage 1: Evaluate baseline COV with conservative parameters
+  # Stage 2: Enable Optuna to target COV < 0.05
   use_optuna: false
 
   # Number of Optuna trials (if enabled)
-  n_trials: 100
+  n_trials: 200
 
   # Optuna timeout (seconds)
-  optuna_timeout: 3600
+  optuna_timeout: 7200  # 2 hours for thorough search
 
 # Cross-validation configuration
 cv:
