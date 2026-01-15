@@ -169,9 +169,11 @@ class ModelTrainer:
             scorer = scoring
 
         # Perform cross-validation
+        # Use n_jobs=1 for GPU to avoid resource conflicts, n_jobs=-1 for CPU
+        cv_n_jobs = 1 if self.params.get('device') == 'cuda' else -1
         start_time = time.time()
         cv_scores = cross_val_score(self.model, X, y, cv=cv, scoring=scorer,
-                                   n_jobs=-1, verbose=0)
+                                   n_jobs=cv_n_jobs, verbose=0)
         cv_time = time.time() - start_time
 
         # Calculate metrics
@@ -274,8 +276,8 @@ class ModelTrainer:
                 # Fixed parameters
                 'random_state': self.params.get('random_state', 42),
                 'tree_method': 'hist',
-                'device': 'cpu',
-                'n_jobs': -1
+                'device': self.params.get('device', 'cpu'),
+                'n_jobs': self.params.get('n_jobs', -1)
             }
 
             # Create and evaluate model
