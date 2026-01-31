@@ -96,6 +96,12 @@ model:
   # Optuna timeout (seconds)
   optuna_timeout: 7200  # 2 hours
 
+  # Early stopping configuration (requires validation split)
+  early_stopping_rounds: 50
+
+  # Evaluation metric for validation monitoring
+  eval_metric: "rmse"
+
 # Cross-validation configuration
 cv:
   # Number of folds

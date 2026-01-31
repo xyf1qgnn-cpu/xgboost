@@ -115,27 +115,45 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
         random_state = data_config.get('random_state', 42)
 
         # Split transformed target (for model training)
-        X_train, X_test, y_train_trans, y_test_trans = train_test_split(
+        X_train_full, X_test, y_train_trans_full, y_test_trans = train_test_split(
             features, target_transformed,
             test_size=test_size,
             random_state=random_state
         )
 
         # Also split original target values (for original space evaluation)
-        _, _, y_train_orig, y_test_orig = train_test_split(
+        _, _, y_train_orig_full, y_test_orig = train_test_split(
             features, target_raw,
             test_size=test_size,
             random_state=random_state
         )
 
-        logger.info(f"Training set: {len(X_train)} samples ({(1-test_size)*100:.0f}%)")
+        logger.info(f"Training set: {len(X_train_full)} samples ({(1-test_size)*100:.0f}%)")
         logger.info(f"Test set: {len(X_test)} samples ({test_size*100:.0f}%)")
+
+        # Step 2.6: Split training data into train/validation sets for early stopping
+        validation_size = model_config.get('validation_size', 0.1)
+        X_val = y_val_trans = y_val_orig = None
+        if validation_size and validation_size > 0:
+            logger.info("\nStep 2.6: Splitting training data into train/validation sets...")
+            X_train, X_val, y_train_trans, y_val_trans, y_train_orig, y_val_orig = train_test_split(
+                X_train_full, y_train_trans_full, y_train_orig_full,
+                test_size=validation_size,
+                random_state=random_state
+            )
+            logger.info(f"Training subset: {len(X_train)} samples ({(1-validation_size)*100:.0f}%)")
+            logger.info(f"Validation set: {len(X_val)} samples ({validation_size*100:.0f}%)")
+        else:
+            X_train = X_train_full
+            y_train_trans = y_train_trans_full
+            y_train_orig = y_train_orig_full
 
         # Step 3: Preprocess data (FIT ON TRAINING DATA ONLY - CRITICAL FIX)
         logger.info("\nStep 3: Preprocessing data...")
         preprocessor = Preprocessor(columns_to_drop=columns_to_drop)
         X_train_processed = preprocessor.fit_transform(X_train)
         X_test_processed = preprocessor.transform(X_test)
+        X_val_processed = preprocessor.transform(X_val) if X_val is not None else None
         logger.info(f"Preprocessing completed: {len(X_train_processed.columns)} features remaining")
 
         # Get remaining feature names
@@ -172,11 +190,21 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
             'n_jobs': model_config.get('n_jobs', -1)
         }
 
+        early_stopping_rounds = model_config.get('early_stopping_rounds')
+        eval_metric = model_config.get('eval_metric')
+
         trainer = ModelTrainer(params=xgb_params, use_optuna=use_optuna,
                              n_trials=n_trials, optuna_timeout=optuna_timeout)
 
         # Train model on TRAINING DATA ONLY (using transformed target)
-        model = trainer.train(X_train_processed, y_train_trans)
+        eval_set = [(X_val_processed, y_val_trans)] if X_val_processed is not None else None
+        model = trainer.train(
+            X_train_processed,
+            y_train_trans,
+            eval_set=eval_set,
+            early_stopping_rounds=early_stopping_rounds,
+            eval_metric=eval_metric
+        )
         logger.info(f"Model training completed on ln({target_column}) target")
 
         # Optional: Hyperparameter optimization (uses training data only)
@@ -203,7 +231,7 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
         # Make predictions on BOTH sets (in transformed space)
         from src.predictor import Predictor
         predictor = Predictor(model, preprocessor, feature_names)
-        y_train_pred_trans = predictor.predict(X_train)
+        y_train_pred_trans = predictor.predict(X_train_full)
         y_test_pred_trans = predictor.predict(X_test)
 
         # Apply inverse transform to get back to original space
@@ -216,11 +244,11 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
             y_test_pred_orig = y_test_pred_trans
 
         # Calculate metrics in ORIGINAL space (recommended - true application scenario)
-        train_metrics = evaluator.calculate_metrics(y_train_orig, y_train_pred_orig)
+        train_metrics = evaluator.calculate_metrics(y_train_orig_full, y_train_pred_orig)
         test_metrics = evaluator.calculate_metrics(y_test_orig, y_test_pred_orig)
 
         # Also calculate metrics in transformed space (for reference)
-        train_metrics_trans = evaluator.calculate_metrics(y_train_trans, y_train_pred_trans)
+        train_metrics_trans = evaluator.calculate_metrics(y_train_trans_full, y_train_pred_trans)
         test_metrics_trans = evaluator.calculate_metrics(y_test_trans, y_test_pred_trans)
 
         # Log original space metrics (PRIMARY)
@@ -296,10 +324,12 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
             'test_metrics_transformed_space': test_metrics_trans,    # REFERENCE
             'cross_validation_results': cv_results,
             'feature_names': feature_names,
-            'n_train_samples': len(X_train),
+            'n_train_samples': len(X_train_full),
             'n_test_samples': len(X_test),
             'n_features': len(feature_names),
             'test_size': test_size,
+            'n_train_fit_samples': len(X_train),
+            'n_validation_samples': len(X_val) if X_val is not None else 0,
             'training_successful': True,
             'overfitting_check': {
                 'rmse_ratio_original': test_metrics['rmse'] / train_metrics['rmse'],
@@ -349,9 +379,11 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
                 'test_metrics_transformed_space': test_metrics_trans,    # REFERENCE
                 'cv_results': serializable_cv_results,
                 'data_split': {
-                    'n_train': len(X_train),
+                    'n_train': len(X_train_full),
                     'n_test': len(X_test),
-                    'test_size': test_size
+                    'test_size': test_size,
+                    'n_train_fit': len(X_train),
+                    'n_validation': len(X_val) if X_val is not None else 0
                 },
                 'overfitting_analysis': {
                     'rmse_ratio_original': test_metrics['rmse'] / train_metrics['rmse'],

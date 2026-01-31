@@ -78,7 +78,10 @@ class ModelTrainer:
 
     def train(self, X_train: pd.DataFrame, y_train: pd.Series,
               X_val: Optional[pd.DataFrame] = None,
-              y_val: Optional[pd.Series] = None) -> xgb.XGBRegressor:
+              y_val: Optional[pd.Series] = None,
+              eval_set: Optional[List[Tuple[pd.DataFrame, pd.Series]]] = None,
+              early_stopping_rounds: Optional[int] = None,
+              eval_metric: Optional[str] = None) -> xgb.XGBRegressor:
         '''
         Train XGBoost model.
 
@@ -87,6 +90,9 @@ class ModelTrainer:
             y_train: Training target values
             X_val: Validation features (optional)
             y_val: Validation target values (optional)
+            eval_set: Evaluation set list for XGBoost (optional)
+            early_stopping_rounds: Early stopping rounds for XGBoost (optional)
+            eval_metric: Evaluation metric for XGBoost (optional)
 
         Returns:
             Trained XGBRegressor model
@@ -96,7 +102,9 @@ class ModelTrainer:
         '''
         logger.info("Starting model training")
         logger.info(f"Training data shape: {X_train.shape}")
-        if X_val is not None:
+        if eval_set:
+            logger.info(f"Evaluation set provided with {len(eval_set)} dataset(s)")
+        elif X_val is not None:
             logger.info(f"Validation data shape: {X_val.shape}")
 
         try:
@@ -104,17 +112,24 @@ class ModelTrainer:
             self.model = xgb.XGBRegressor(**self.params)
 
             # Prepare evaluation set if validation data provided
-            eval_set = None
-            if X_val is not None and y_val is not None:
-                eval_set = [(X_val, y_val)]
+            eval_set_to_use = eval_set
+            if eval_set_to_use is None and X_val is not None and y_val is not None:
+                eval_set_to_use = [(X_val, y_val)]
+
+            if early_stopping_rounds is not None and not eval_set_to_use:
+                logger.warning("early_stopping_rounds provided without eval_set; early stopping will be ignored")
 
             # Train model
             start_time = time.time()
-            self.model.fit(
-                X_train, y_train,
-                eval_set=eval_set,
-                verbose=False
-            )
+            fit_kwargs = {'verbose': False}
+            if eval_set_to_use:
+                fit_kwargs['eval_set'] = eval_set_to_use
+            if early_stopping_rounds is not None:
+                fit_kwargs['early_stopping_rounds'] = early_stopping_rounds
+            if eval_metric is not None:
+                fit_kwargs['eval_metric'] = eval_metric
+
+            self.model.fit(X_train, y_train, **fit_kwargs)
 
             training_time = time.time() - start_time
             logger.info(f"Model training completed in {training_time:.2f} seconds")
@@ -125,7 +140,7 @@ class ModelTrainer:
                 'n_samples': len(X_train),
                 'n_features': X_train.shape[1],
                 'training_time': training_time,
-                'has_validation': X_val is not None
+                'has_validation': bool(eval_set_to_use)
             })
 
             # Log feature importance summary
