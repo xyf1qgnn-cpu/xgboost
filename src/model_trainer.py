@@ -124,7 +124,7 @@ class ModelTrainer:
             fit_kwargs = {'verbose': False}
             if eval_set_to_use:
                 fit_kwargs['eval_set'] = eval_set_to_use
-            if early_stopping_rounds is not None:
+            if early_stopping_rounds is not None and eval_set_to_use:
                 fit_kwargs['early_stopping_rounds'] = early_stopping_rounds
             if eval_metric is not None:
                 fit_kwargs['eval_metric'] = eval_metric
