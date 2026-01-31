@@ -44,6 +44,29 @@ def load_config(config_path: str):
     return config
 
 
+def apply_target_transform(target: pd.Series, transform_type: str = None) -> pd.Series:
+    """Apply target transformation based on configuration."""
+    if transform_type == 'log':
+        return np.log(target)
+    if transform_type == 'sqrt':
+        return np.sqrt(target)
+    return target.copy()
+
+
+def summarize_target_distribution(target: pd.Series) -> dict:
+    """Summarize target distribution for logging/metadata."""
+    return {
+        "count": int(target.shape[0]),
+        "mean": float(target.mean()),
+        "std": float(target.std()),
+        "min": float(target.min()),
+        "q25": float(target.quantile(0.25)),
+        "median": float(target.quantile(0.5)),
+        "q75": float(target.quantile(0.75)),
+        "max": float(target.max()),
+    }
+
+
 def train_model(config_path: str, output_dir: str = None) -> dict:
     """
     Execute complete training pipeline.
@@ -77,6 +100,7 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
         data_path = data_config.get('file_path')
         target_column = data_config.get('target_column', 'K')
         columns_to_drop = data_config.get('columns_to_drop', [])
+        outlier_config = data_config.get('outlier_handling', {})
 
         # Set output directory
         if output_dir is None:
@@ -86,6 +110,12 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
         logger.info(f"Data file: {data_path}")
         logger.info(f"Target column: {target_column}")
         logger.info(f"Columns to drop: {columns_to_drop}")
+        logger.info(
+            "Outlier handling config: "
+            f"strategy={outlier_config.get('strategy', 'none')}, "
+            f"method={outlier_config.get('outlier_method', 'iqr')}, "
+            f"z_threshold={outlier_config.get('z_threshold', 3.0)}"
+        )
 
         # Step 2: Load data
         logger.info("\nStep 2: Loading data...")
@@ -93,15 +123,19 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
 
         # Read target transform configuration
         target_transform_config = data_config.get('target_transform', {})
-        target_transform_type = target_transform_config.get('type', None) if target_transform_config.get('enabled', False) else None
+        target_transform_type = (
+            target_transform_config.get('type', None)
+            if target_transform_config.get('enabled', False)
+            else None
+        )
 
         if target_transform_type:
             logger.info(f"Target transform enabled: {target_transform_type}")
 
-        features, target_transformed = data_loader.load_data(
+        features, _ = data_loader.load_data(
             data_path,
             target_column,
-            target_transform=target_transform_type
+            target_transform=None
         )
 
         # Save original target values (for inverse transform evaluation)
@@ -114,15 +148,8 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
         test_size = data_config.get('test_size', 0.2)
         random_state = data_config.get('random_state', 42)
 
-        # Split transformed target (for model training)
-        X_train, X_test, y_train_trans, y_test_trans = train_test_split(
-            features, target_transformed,
-            test_size=test_size,
-            random_state=random_state
-        )
-
-        # Also split original target values (for original space evaluation)
-        _, _, y_train_orig, y_test_orig = train_test_split(
+        # Split original target values (we will apply transforms after preprocessing)
+        X_train, X_test, y_train_orig, y_test_orig = train_test_split(
             features, target_raw,
             test_size=test_size,
             random_state=random_state
@@ -133,10 +160,52 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
 
         # Step 3: Preprocess data (FIT ON TRAINING DATA ONLY - CRITICAL FIX)
         logger.info("\nStep 3: Preprocessing data...")
-        preprocessor = Preprocessor(columns_to_drop=columns_to_drop)
-        X_train_processed = preprocessor.fit_transform(X_train)
-        X_test_processed = preprocessor.transform(X_test)
+        outlier_method = outlier_config.get('outlier_method', 'iqr')
+        z_threshold = outlier_config.get('z_threshold', 3.0)
+        outlier_strategy = outlier_config.get('strategy', 'none')
+
+        preprocessor = Preprocessor(
+            columns_to_drop=columns_to_drop,
+            outlier_method=outlier_method,
+            z_threshold=z_threshold,
+            outlier_strategy=outlier_strategy,
+        )
+
+        train_target_stats_before = summarize_target_distribution(y_train_orig)
+        test_target_stats_before = summarize_target_distribution(y_test_orig)
+
+        X_train_processed, y_train_orig_processed, outlier_stats_train = preprocessor.fit_transform(
+            X_train,
+            y_train_orig
+        )
+        X_test_processed, y_test_orig_processed, outlier_stats_test = preprocessor.transform(
+            X_test,
+            y_test_orig,
+            apply_target_outlier_handling=False,
+        )
+
         logger.info(f"Preprocessing completed: {len(X_train_processed.columns)} features remaining")
+        logger.info(
+            "Outlier handling summary (train): "
+            f"{outlier_stats_train['n_samples_before']} -> {outlier_stats_train['n_samples_after']} "
+            f"(dropped {outlier_stats_train['n_dropped']})"
+        )
+        logger.info(
+            "Outlier handling summary (test): "
+            f"{outlier_stats_test['n_samples_before']} -> {outlier_stats_test['n_samples_after']} "
+            f"(dropped {outlier_stats_test['n_dropped']})"
+        )
+
+        train_target_stats_after = summarize_target_distribution(y_train_orig_processed)
+        test_target_stats_after = summarize_target_distribution(y_test_orig_processed)
+        logger.info(f"Train target distribution before outlier handling: {train_target_stats_before}")
+        logger.info(f"Train target distribution after outlier handling: {train_target_stats_after}")
+        logger.info(f"Test target distribution before outlier handling: {test_target_stats_before}")
+        logger.info(f"Test target distribution after outlier handling: {test_target_stats_after}")
+
+        # Apply target transform after outlier handling
+        y_train_trans = apply_target_transform(y_train_orig_processed, target_transform_type)
+        y_test_trans = apply_target_transform(y_test_orig_processed, target_transform_type)
 
         # Get remaining feature names
         feature_names = preprocessor.get_remaining_features()
@@ -177,7 +246,10 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
 
         # Train model on TRAINING DATA ONLY (using transformed target)
         model = trainer.train(X_train_processed, y_train_trans)
-        logger.info(f"Model training completed on ln({target_column}) target")
+        if target_transform_type:
+            logger.info(f"Model training completed on {target_transform_type}({target_column}) target")
+        else:
+            logger.info(f"Model training completed on {target_column} target")
 
         # Optional: Hyperparameter optimization (uses training data only)
         if use_optuna:
@@ -201,10 +273,8 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
         evaluator = Evaluator()
 
         # Make predictions on BOTH sets (in transformed space)
-        from src.predictor import Predictor
-        predictor = Predictor(model, preprocessor, feature_names)
-        y_train_pred_trans = predictor.predict(X_train)
-        y_test_pred_trans = predictor.predict(X_test)
+        y_train_pred_trans = model.predict(X_train_processed)
+        y_test_pred_trans = model.predict(X_test_processed)
 
         # Apply inverse transform to get back to original space
         if target_transform_type == 'log':
@@ -216,8 +286,8 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
             y_test_pred_orig = y_test_pred_trans
 
         # Calculate metrics in ORIGINAL space (recommended - true application scenario)
-        train_metrics = evaluator.calculate_metrics(y_train_orig, y_train_pred_orig)
-        test_metrics = evaluator.calculate_metrics(y_test_orig, y_test_pred_orig)
+        train_metrics = evaluator.calculate_metrics(y_train_orig_processed, y_train_pred_orig)
+        test_metrics = evaluator.calculate_metrics(y_test_orig_processed, y_test_pred_orig)
 
         # Also calculate metrics in transformed space (for reference)
         train_metrics_trans = evaluator.calculate_metrics(y_train_trans, y_train_pred_trans)
@@ -265,13 +335,13 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
 
         # Training set plots (using original space for interpretability)
         create_evaluation_dashboard(
-            y_train_orig, y_train_pred_orig, model, feature_names,
+            y_train_orig_processed, y_train_pred_orig, model, feature_names,
             str(plots_dir), "xgboost_model_train"
         )
 
         # Test set plots (PRIMARY - shows true generalization)
         create_evaluation_dashboard(
-            y_test_orig, y_test_pred_orig, model, feature_names,
+            y_test_orig_processed, y_test_pred_orig, model, feature_names,
             str(plots_dir), "xgboost_model_test"
         )
 
@@ -290,14 +360,27 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
                 'type': target_transform_type,
                 'original_column': target_column
             },
+            'outlier_handling': {
+                'config': {
+                    'strategy': outlier_strategy,
+                    'method': outlier_method,
+                    'z_threshold': z_threshold,
+                },
+                'train_target_distribution_before': train_target_stats_before,
+                'train_target_distribution_after': train_target_stats_after,
+                'test_target_distribution_before': test_target_stats_before,
+                'test_target_distribution_after': test_target_stats_after,
+                'train_outlier_stats': outlier_stats_train,
+                'test_outlier_stats': outlier_stats_test,
+            },
             'train_metrics_original_space': train_metrics,      # PRIMARY
             'test_metrics_original_space': test_metrics,        # PRIMARY
             'train_metrics_transformed_space': train_metrics_trans,  # REFERENCE
             'test_metrics_transformed_space': test_metrics_trans,    # REFERENCE
             'cross_validation_results': cv_results,
             'feature_names': feature_names,
-            'n_train_samples': len(X_train),
-            'n_test_samples': len(X_test),
+            'n_train_samples': len(X_train_processed),
+            'n_test_samples': len(X_test_processed),
             'n_features': len(feature_names),
             'test_size': test_size,
             'training_successful': True,
@@ -349,8 +432,8 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
                 'test_metrics_transformed_space': test_metrics_trans,    # REFERENCE
                 'cv_results': serializable_cv_results,
                 'data_split': {
-                    'n_train': len(X_train),
-                    'n_test': len(X_test),
+                    'n_train': len(X_train_processed),
+                    'n_test': len(X_test_processed),
                     'test_size': test_size
                 },
                 'overfitting_analysis': {

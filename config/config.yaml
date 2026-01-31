@@ -23,6 +23,17 @@ data:
     - "L (mm)"
     - "lambda"
 
+  # Outlier handling configuration
+  outlier_handling:
+    # Strategy: none, drop_outliers, clip_outliers
+    strategy: "none"
+
+    # Outlier detection method: iqr, z_score
+    outlier_method: "iqr"
+
+    # Z-score threshold when using z_score
+    z_threshold: 3.0
+
   # Train-test split ratio
   test_size: 0.2
 
