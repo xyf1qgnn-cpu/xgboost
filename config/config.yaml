@@ -102,6 +102,10 @@ model:
   # Evaluation metric for validation monitoring
   eval_metric: "rmse"
 
+  # Validation set split from training data (for early stopping)
+  # Set to 0 to disable validation split
+  validation_size: 0.1
+
 # Cross-validation configuration
 cv:
   # Number of folds
