@@ -45,8 +45,8 @@ class ModelTrainer:
         self.model: Optional[xgb.XGBRegressor] = None
         self.training_history = []
 
-        # Auto-load best parameters if use_optuna is False
-        if not self.use_optuna:
+        # Auto-load best parameters if use_optuna is False and no params provided
+        if params is None and not self.use_optuna:
             loaded_params = load_best_params()
             if loaded_params is not None:
                 self.params.update(loaded_params)

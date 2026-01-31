@@ -16,6 +16,7 @@ Usage:
 """
 
 import argparse
+import json
 import sys
 import traceback
 from pathlib import Path
@@ -29,7 +30,7 @@ from src.data_loader import DataLoader
 from src.preprocessor import Preprocessor
 from src.model_trainer import ModelTrainer
 from src.evaluator import Evaluator
-from src.utils.model_utils import save_model, save_metadata
+from src.utils.model_utils import load_best_params, save_model, save_metadata
 from src.visualizer import (create_evaluation_dashboard, plot_feature_importance,
                            print_feature_importance_ranking)
 
@@ -158,19 +159,32 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
         n_trials = model_config.get('n_trials', 100)
         optuna_timeout = model_config.get('optuna_timeout', 3600)
 
-        # Prepare XGBoost parameters
-        xgb_params = {
-            'objective': model_config.get('objective', 'reg:squarederror'),
-            'max_depth': model_config.get('max_depth', 6),
-            'learning_rate': model_config.get('learning_rate', 0.1),
-            'n_estimators': model_config.get('n_estimators', 200),
-            'subsample': model_config.get('subsample', 0.8),
-            'colsample_bytree': model_config.get('colsample_bytree', 0.8),
-            'random_state': model_config.get('random_state', 42),
-            'tree_method': model_config.get('tree_method', 'hist'),
-            'device': model_config.get('device', 'cpu'),
-            'n_jobs': model_config.get('n_jobs', -1)
+        # Prepare XGBoost parameters (config.yaml model.params as base)
+        default_params = {
+            'objective': 'reg:squarederror',
+            'max_depth': 6,
+            'learning_rate': 0.1,
+            'n_estimators': 200,
+            'subsample': 0.8,
+            'colsample_bytree': 0.8,
+            'random_state': 42,
+            'tree_method': 'hist',
+            'device': 'cpu',
+            'n_jobs': -1
         }
+        config_params = model_config.get('params', {}) or {}
+        xgb_params = {**default_params, **config_params}
+
+        # Load best parameters (logs/best_params.json) and override config params if present
+        best_params = load_best_params()
+        if best_params:
+            xgb_params.update(best_params)
+            params_source = "best_params.json"
+        else:
+            params_source = "config.yaml"
+
+        logger.info(f"最终参数来源: {params_source}")
+        logger.info("最终训练参数: %s", json.dumps(xgb_params, indent=2, ensure_ascii=False))
 
         trainer = ModelTrainer(params=xgb_params, use_optuna=use_optuna,
                              n_trials=n_trials, optuna_timeout=optuna_timeout)
