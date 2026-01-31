@@ -200,8 +200,14 @@ class ModelTrainer:
         """
         logger.info(f"Starting {cv}-fold cross-validation")
 
-        if self.model is None:
-            self.model = xgb.XGBRegressor(**self.params)
+        # Create a fresh model for cross-validation WITHOUT early_stopping_rounds
+        # sklearn's cross_val_score doesn't pass eval_set, which XGBoost requires
+        # when early_stopping_rounds is set
+        cv_params = self.params.copy()
+        # Remove early stopping related parameters that require eval_set
+        cv_params.pop("early_stopping_rounds", None)
+        cv_params.pop("eval_metric", None)
+        cv_model = xgb.XGBRegressor(**cv_params)
 
         # Define scoring function
         if scoring == "neg_root_mean_squared_error":
@@ -216,7 +222,7 @@ class ModelTrainer:
         cv_n_jobs = 1 if self.params.get("device") == "cuda" else -1
         start_time = time.time()
         cv_scores = cross_val_score(
-            self.model, X, y, cv=cv, scoring=scorer, n_jobs=cv_n_jobs, verbose=0
+            cv_model, X, y, cv=cv, scoring=scorer, n_jobs=cv_n_jobs, verbose=0
         )
         cv_time = time.time() - start_time
 
