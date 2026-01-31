@@ -180,7 +180,8 @@ def train_model(config_path: str, output_dir: str = None) -> dict:
         )
         X_test_processed, y_test_orig_processed, outlier_stats_test = preprocessor.transform(
             X_test,
-            y_test_orig
+            y_test_orig,
+            apply_target_outlier_handling=False,
         )
 
         logger.info(f"Preprocessing completed: {len(X_train_processed.columns)} features remaining")

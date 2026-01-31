@@ -150,13 +150,17 @@ class Preprocessor:
     def transform(
         self,
         X: pd.DataFrame,
-        y: Optional[pd.Series] = None
+        y: Optional[pd.Series] = None,
+        apply_target_outlier_handling: bool = True,
     ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, Optional[pd.Series], Dict[str, Any]]]:
         """
         Transform the data by dropping specified columns.
 
         Args:
             X: Input features DataFrame
+            y: Optional target series to keep aligned with feature transforms
+            apply_target_outlier_handling: Whether to apply target-based outlier
+                masking/clipping when target bounds are available.
 
         Returns:
             DataFrame with specified columns removed
@@ -201,7 +205,11 @@ class Preprocessor:
                     outlier_stats["feature_outlier_counts"][column] = int(outlier_count)
                     mask &= column_mask
 
-                if y_transformed is not None and self.target_outlier_bounds is not None:
+                if (
+                    y_transformed is not None
+                    and self.target_outlier_bounds is not None
+                    and apply_target_outlier_handling
+                ):
                     lower, upper = self.target_outlier_bounds
                     target_mask = y_transformed.between(lower, upper, inclusive="both")
                     outlier_stats["target_outlier_count"] = int((~target_mask).sum())
@@ -221,7 +229,11 @@ class Preprocessor:
                         outlier_stats["feature_outlier_counts"][column] = int(outlier_count)
                         X_transformed[column] = X_transformed[column].clip(lower=lower, upper=upper)
 
-                if y_transformed is not None and self.target_outlier_bounds is not None:
+                if (
+                    y_transformed is not None
+                    and self.target_outlier_bounds is not None
+                    and apply_target_outlier_handling
+                ):
                     lower, upper = self.target_outlier_bounds
                     outlier_stats["target_outlier_count"] = int(
                         (~y_transformed.between(lower, upper, inclusive="both")).sum()
@@ -239,7 +251,8 @@ class Preprocessor:
     def fit_transform(
         self,
         X: pd.DataFrame,
-        y: Optional[pd.Series] = None
+        y: Optional[pd.Series] = None,
+        apply_target_outlier_handling: bool = True,
     ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, Optional[pd.Series], Dict[str, Any]]]:
         """
         Fit the preprocessor and transform the data in one step.
@@ -250,7 +263,11 @@ class Preprocessor:
         Returns:
             DataFrame with specified columns removed
         """
-        return self.fit(X, y).transform(X, y)
+        return self.fit(X, y).transform(
+            X,
+            y,
+            apply_target_outlier_handling=apply_target_outlier_handling,
+        )
 
     def get_remaining_features(self) -> List[str]:
         """
