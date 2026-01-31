@@ -1,0 +1,12 @@
+{
+  "pythonVersion": "3.13",
+  "pythonPlatform": "Linux",
+  "venvPath": "/home/thelya",
+  "venv": "miniconda3",
+  "extraPaths": [
+    "/home/thelya/miniconda3/lib/python3.13/site-packages"
+  ],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": "none"
+}
